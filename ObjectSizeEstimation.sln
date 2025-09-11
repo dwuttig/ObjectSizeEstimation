@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ObjectSizeEstimation", "ObjectSizeEstimation\ObjectSizeEstimation.csproj", "{E6922BC8-D86C-45AE-BC80-791717309606}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ObjectSizeEstimation.Test", "ObjectSizeEstimation.Test\ObjectSizeEstimation.Test.csproj", "{0A1F6CCA-92A9-413A-9DA9-EA69632DA26C}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{E6922BC8-D86C-45AE-BC80-791717309606}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E6922BC8-D86C-45AE-BC80-791717309606}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E6922BC8-D86C-45AE-BC80-791717309606}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E6922BC8-D86C-45AE-BC80-791717309606}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0A1F6CCA-92A9-413A-9DA9-EA69632DA26C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0A1F6CCA-92A9-413A-9DA9-EA69632DA26C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0A1F6CCA-92A9-413A-9DA9-EA69632DA26C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0A1F6CCA-92A9-413A-9DA9-EA69632DA26C}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
