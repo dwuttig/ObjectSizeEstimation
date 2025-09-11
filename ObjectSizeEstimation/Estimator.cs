@@ -60,7 +60,7 @@ public class Estimator
             var elementType = type.GetElementType();
             if (elementType is not null && TryGetPrimitiveSize(elementType, out var elementPrimitiveSize))
             {
-                size += (long)arr.LongLength * elementPrimitiveSize;
+                size += arr.LongLength * elementPrimitiveSize;
             }
             else
             {
@@ -222,62 +222,59 @@ public class Estimator
         
         var keyType = type.GetGenericArguments()[0];
         var valueType = type.GetGenericArguments()[1];
-        var countProperty = type.GetProperty("Count");
-        var count = (int)(countProperty?.GetValue(obj) ?? 0);
 
-        // Estimate key size
-        long keySize = 0;
-        if (TryGetPrimitiveSize(keyType, out var keyPrimitiveSize))
+        // Check if both key and value are primitives for optimized calculation
+        bool keyIsPrimitive = TryGetPrimitiveSize(keyType, out var keyPrimitiveSize);
+        bool valueIsPrimitive = TryGetPrimitiveSize(valueType, out var valuePrimitiveSize);
+
+        if (keyIsPrimitive && valueIsPrimitive)
         {
-            keySize = keyPrimitiveSize;
+            // Both are primitives - use count-based calculation for efficiency
+            var countProperty = type.GetProperty("Count");
+            var count = (int)(countProperty?.GetValue(obj) ?? 0);
+            size += (long)count * (keyPrimitiveSize + valuePrimitiveSize);
         }
         else
         {
-            // For non-primitive keys, estimate based on the first key if available
+            // At least one is non-primitive - iterate through all entries for accurate estimation
             if (obj is IEnumerable enumerable)
             {
-                var enumerator = enumerable.GetEnumerator();
-                if (enumerator.MoveNext())
+                foreach (var item in enumerable)
                 {
-                    // This is a KeyValuePair, we need to extract the key
-                    var kvpType = enumerator.Current.GetType();
+                    // This is a KeyValuePair, we need to extract the key and value
+                    var kvpType = item.GetType();
                     var keyProperty = kvpType.GetProperty("Key");
-                    if (keyProperty != null)
-                    {
-                        var firstKey = keyProperty.GetValue(enumerator.Current);
-                        keySize = EstimateObjectSize(firstKey, visited);
-                    }
-                }
-            }
-        }
-
-        // Estimate value size
-        long valueSize = 0;
-        if (TryGetPrimitiveSize(valueType, out var valuePrimitiveSize))
-        {
-            valueSize = valuePrimitiveSize;
-        }
-        else
-        {
-            // For non-primitive values, estimate based on first value if available
-            if (obj is IEnumerable enumerable)
-            {
-                var enumerator = enumerable.GetEnumerator();
-                if (enumerator.MoveNext())
-                {
-                    // This is a KeyValuePair, we need to extract the value
-                    var kvpType = enumerator.Current.GetType();
                     var valueProperty = kvpType.GetProperty("Value");
-                    if (valueProperty != null)
+                    
+                    if (keyProperty != null && valueProperty != null)
                     {
-                        var firstValue = valueProperty.GetValue(enumerator.Current);
-                        valueSize = EstimateObjectSize(firstValue, visited);
+                        var key = keyProperty.GetValue(item);
+                        var value = valueProperty.GetValue(item);
+                        
+                        // Estimate key size
+                        if (keyIsPrimitive)
+                        {
+                            size += keyPrimitiveSize;
+                        }
+                        else
+                        {
+                            size += EstimateObjectSize(key, visited);
+                        }
+                        
+                        // Estimate value size
+                        if (valueIsPrimitive)
+                        {
+                            size += valuePrimitiveSize;
+                        }
+                        else
+                        {
+                            size += EstimateObjectSize(value, visited);
+                        }
                     }
                 }
             }
         }
 
-        size += (long)count * (keySize + valueSize);
         return size;
     }
 
