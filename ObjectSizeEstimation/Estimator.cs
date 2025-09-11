@@ -22,7 +22,7 @@ public class Estimator
         return size;
     }
 
-    private static long EstimateObjectSize(object? obj, HashSet<object> visited)
+    private long EstimateObjectSize(object? obj, HashSet<object> visited)
     {
         if (obj is null)
         {
@@ -40,23 +40,23 @@ public class Estimator
             }
         }
 
+        long size = 0;
+
         // Primitives and well-known value types
         if (TryGetPrimitiveSize(type, out var primitiveSize))
         {
-            return primitiveSize;
+            size = primitiveSize;
         }
-
         // Strings
-        if (obj is string s)
+        else if (obj is string s)
         {
             // Naive: 24 bytes overhead + 2 bytes per char
-            return 24 + (s.Length * 2);
+            size = 24 + (s.Length * 2);
         }
-
         // Arrays
-        if (obj is Array arr)
+        else if (obj is Array arr)
         {
-            long size = 24; // naive array overhead
+            size = 24; // naive array overhead
             var elementType = type.GetElementType();
             if (elementType is not null && TryGetPrimitiveSize(elementType, out var elementPrimitiveSize))
             {
@@ -69,42 +69,79 @@ public class Estimator
                     size += EstimateObjectSize(item, visited);
                 }
             }
-            return size;
         }
-
         // Collections - handle various collection types
-        if (TryEstimateCollectionSize(obj, type, visited, out var collectionSize))
+        else if (TryEstimateCollectionSize(obj, type, visited, out var collectionSize))
         {
-            return collectionSize;
+            size = collectionSize;
         }
-
         // Value types (structs): sum fields
-        if (type.IsValueType)
+        else if (type.IsValueType)
         {
-            long size = 0;
             var fields = type.GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
             foreach (var field in fields)
             {
                 var fieldValue = field.GetValue(obj);
                 size += EstimateObjectSize(fieldValue, visited);
             }
-            return size;
+        }
+        // Reference types (classes): naive object header + fields
+        else
+        {
+            size = 24; // naive object header
+            var fields = type.GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+            foreach (var field in fields)
+            {
+                var fieldValue = field.GetValue(obj);
+                size += EstimateObjectSize(fieldValue, visited);
+            }
         }
 
-        // Reference types (classes): naive object header + fields
-        {
-            long size = 24; // naive object header
-            var fields = type.GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
-            foreach (var field in fields)
-            {
-                var fieldValue = field.GetValue(obj);
-                size += EstimateObjectSize(fieldValue, visited);
-            }
-            return size;
-        }
+        // Log the object name and size
+        var objectName = GetObjectName(obj, type);
+        _logger?.LogInformation("Estimated object: {ObjectName} = {Size} bytes", objectName, size);
+
+        return size;
     }
 
-    private static bool TryEstimateCollectionSize(object obj, Type type, HashSet<object> visited, out long size)
+    private string GetObjectName(object obj, Type type)
+    {
+        // For primitives, show the value
+        if (TryGetPrimitiveSize(type, out _))
+        {
+            return $"{type.Name}({obj})";
+        }
+
+        // For strings, show truncated content
+        if (obj is string s)
+        {
+            var truncated = s.Length > 50 ? s.Substring(0, 50) + "..." : s;
+            return $"String[{s.Length}](\"{truncated}\")";
+        }
+
+        // For arrays, show type and length
+        if (obj is Array arr)
+        {
+            return $"{type.Name}[{arr.Length}]";
+        }
+
+        // For collections, show type and count
+        if (obj is ICollection collection)
+        {
+            return $"{type.Name}[{collection.Count}]";
+        }
+
+        // For dictionaries, show type and count
+        if (obj is IDictionary dictionary)
+        {
+            return $"{type.Name}[{dictionary.Count}]";
+        }
+
+        // For other objects, show the type name
+        return type.Name;
+    }
+
+    private bool TryEstimateCollectionSize(object obj, Type type, HashSet<object> visited, out long size)
     {
         size = 0;
 
@@ -152,7 +189,7 @@ public class Estimator
         return false;
     }
 
-    private static long EstimateGenericCollectionSize(object obj, Type type, HashSet<object> visited)
+    private long EstimateGenericCollectionSize(object obj, Type type, HashSet<object> visited)
     {
         long size = 24; // collection object overhead
         
@@ -179,7 +216,7 @@ public class Estimator
         return size;
     }
 
-    private static long EstimateDictionarySize(object obj, Type type, HashSet<object> visited)
+    private long EstimateDictionarySize(object obj, Type type, HashSet<object> visited)
     {
         long size = 24; // dictionary object overhead
         
@@ -196,7 +233,7 @@ public class Estimator
         }
         else
         {
-            // For non-primitive keys, estimate based on first key if available
+            // For non-primitive keys, estimate based on the first key if available
             if (obj is IEnumerable enumerable)
             {
                 var enumerator = enumerable.GetEnumerator();
@@ -244,7 +281,7 @@ public class Estimator
         return size;
     }
 
-    private static long EstimateNonGenericCollectionSize(ICollection collection, HashSet<object> visited)
+    private long EstimateNonGenericCollectionSize(ICollection collection, HashSet<object> visited)
     {
         long size = 24; // collection object overhead
         
@@ -256,7 +293,7 @@ public class Estimator
         return size;
     }
 
-    private static long EstimateNonGenericDictionarySize(IDictionary dictionary, HashSet<object> visited)
+    private long EstimateNonGenericDictionarySize(IDictionary dictionary, HashSet<object> visited)
     {
         long size = 24; // dictionary object overhead
         

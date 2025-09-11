@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+
 namespace ObjectSizeEstimation.Test;
 
 public class EstimatorBehaviorTests
@@ -314,6 +316,7 @@ public class EstimatorBehaviorTests
         var person2Size = _estimator.EstimateSize(person2);
         long expectedListSize = 24 + person1Size + person2Size; // List overhead + Person1 + Person2
 
+
         Assert.That(listSize, Is.EqualTo(expectedListSize));
 
         // Test HashSet<Person> with same objects
@@ -330,14 +333,12 @@ public class EstimatorBehaviorTests
         var dictSize = _estimator.EstimateSize(personDict);
 
         // Calculate the expected size for Dictionary<string, Person>
-        // Dictionary overhead: 24
-        // Key "alice": 24 + 2*5 = 34
-        // Value person1: 206 bytes (from debug output)
-        // Key "bob": 24 + 2*3 = 30
-        // Value person2: 210 bytes (from debug output)
+        var aliceKeySize = _estimator.EstimateSize("alice");
+        var bobKeySize = _estimator.EstimateSize("bob");
         long expectedDictSize = 24; // Dictionary overhead
-        expectedDictSize += (24 + 2 * "alice".Length) + 206; // "alice" -> person1
-        expectedDictSize += (24 + 2 * "bob".Length) + 210; // "bob" -> person2
+        expectedDictSize += aliceKeySize + person1Size; // "alice" -> person1
+        expectedDictSize += bobKeySize + person2Size; // "bob" -> person2
+
 
         Assert.That(dictSize, Is.EqualTo(expectedDictSize));
 
@@ -356,7 +357,59 @@ public class EstimatorBehaviorTests
         var listWithDistinct = new List<Person> { personWithDistinct1, personWithDistinct2 };
         var listWithDistinctSize = _estimator.EstimateSize(listWithDistinct);
 
+
         // List with shared address should be smaller due to deduplication
         Assert.That(listWithSharedSize, Is.LessThan(listWithDistinctSize));
+    }
+
+    [Test]
+    public void Logging_Shows_Object_Names_And_Sizes()
+    {
+        // Create a simple logger using a custom implementation
+        var logger = new TestLogger();
+        var estimatorWithLogging = new Estimator(logger);
+
+        // Test with a simple object that will generate multiple log entries
+        var person = new Person
+        {
+            Id = 42,
+            Name = "TestPerson",
+            Scores = new[] { 1, 2, 3 },
+            Address = new Address
+            {
+                Street = "Test Street",
+                City = "Test City",
+                ZipCode = 12345
+            }
+        };
+
+        // This should generate debug logs for each object being estimated
+        var size = estimatorWithLogging.EstimateSize(person);
+        
+        // Verify the size is calculated correctly
+        Assert.That(size, Is.GreaterThan(0));
+        
+        // Verify that logging occurred
+        Assert.That(logger.LogEntries.Count, Is.GreaterThan(0));
+        
+        // Verify that we logged object names and sizes
+        var hasObjectLogs = logger.LogEntries.Any(entry => 
+            entry.Contains("Estimated object:") && entry.Contains("bytes"));
+        Assert.That(hasObjectLogs, Is.True);
+    }
+
+    private class TestLogger : ILogger
+    {
+        public List<string> LogEntries { get; } = new();
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            var message = formatter(state, exception);
+            LogEntries.Add(message);
+        }
     }
 } 
