@@ -1,11 +1,13 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
+using System.Collections;
+using System.Collections.Generic;
 namespace ObjectSizeEstimation;
 
 public class Estimator
 {
-    private readonly Microsoft.Extensions.Logging.ILogger? _logger;
+    private readonly ILogger? _logger;
 
-    public Estimator(Microsoft.Extensions.Logging.ILogger? logger = null)
+    public Estimator(ILogger? logger = null)
     {
         _logger = logger;
     }
@@ -70,6 +72,12 @@ public class Estimator
             return size;
         }
 
+        // Collections - handle various collection types
+        if (TryEstimateCollectionSize(obj, type, visited, out var collectionSize))
+        {
+            return collectionSize;
+        }
+
         // Value types (structs): sum fields
         if (type.IsValueType)
         {
@@ -94,6 +102,171 @@ public class Estimator
             }
             return size;
         }
+    }
+
+    private static bool TryEstimateCollectionSize(object obj, Type type, HashSet<object> visited, out long size)
+    {
+        size = 0;
+
+        // Handle generic collections
+        if (type.IsGenericType)
+        {
+            var genericTypeDef = type.GetGenericTypeDefinition();
+            
+            // List<T>, HashSet<T>, Queue<T>, Stack<T>, etc.
+            if (genericTypeDef == typeof(List<>) || 
+                genericTypeDef == typeof(HashSet<>) ||
+                genericTypeDef == typeof(Queue<>) ||
+                genericTypeDef == typeof(Stack<>) ||
+                genericTypeDef == typeof(LinkedList<>) ||
+                genericTypeDef == typeof(SortedSet<>))
+            {
+                size = EstimateGenericCollectionSize(obj, type, visited);
+                return true;
+            }
+
+            // Dictionary<TKey, TValue>, SortedDictionary<TKey, TValue>, etc.
+            if (genericTypeDef == typeof(Dictionary<,>) ||
+                genericTypeDef == typeof(SortedDictionary<,>) ||
+                genericTypeDef == typeof(SortedList<,>))
+            {
+                size = EstimateDictionarySize(obj, type, visited);
+                return true;
+            }
+        }
+
+        // Handle non-generic collections
+        if (obj is ICollection collection)
+        {
+            size = EstimateNonGenericCollectionSize(collection, visited);
+            return true;
+        }
+
+        // Handle IDictionary
+        if (obj is IDictionary dictionary)
+        {
+            size = EstimateNonGenericDictionarySize(dictionary, visited);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static long EstimateGenericCollectionSize(object obj, Type type, HashSet<object> visited)
+    {
+        long size = 24; // collection object overhead
+        
+        var elementType = type.GetGenericArguments()[0];
+        var countProperty = type.GetProperty("Count");
+        var count = (int)(countProperty?.GetValue(obj) ?? 0);
+
+        if (TryGetPrimitiveSize(elementType, out var elementPrimitiveSize))
+        {
+            size += (long)count * elementPrimitiveSize;
+        }
+        else
+        {
+            // For non-primitive elements, we need to iterate
+            if (obj is IEnumerable enumerable)
+            {
+                foreach (var item in enumerable)
+                {
+                    size += EstimateObjectSize(item, visited);
+                }
+            }
+        }
+
+        return size;
+    }
+
+    private static long EstimateDictionarySize(object obj, Type type, HashSet<object> visited)
+    {
+        long size = 24; // dictionary object overhead
+        
+        var keyType = type.GetGenericArguments()[0];
+        var valueType = type.GetGenericArguments()[1];
+        var countProperty = type.GetProperty("Count");
+        var count = (int)(countProperty?.GetValue(obj) ?? 0);
+
+        // Estimate key size
+        long keySize = 0;
+        if (TryGetPrimitiveSize(keyType, out var keyPrimitiveSize))
+        {
+            keySize = keyPrimitiveSize;
+        }
+        else
+        {
+            // For non-primitive keys, estimate based on first key if available
+            if (obj is IEnumerable enumerable)
+            {
+                var enumerator = enumerable.GetEnumerator();
+                if (enumerator.MoveNext())
+                {
+                    // This is a KeyValuePair, we need to extract the key
+                    var kvpType = enumerator.Current.GetType();
+                    var keyProperty = kvpType.GetProperty("Key");
+                    if (keyProperty != null)
+                    {
+                        var firstKey = keyProperty.GetValue(enumerator.Current);
+                        keySize = EstimateObjectSize(firstKey, visited);
+                    }
+                }
+            }
+        }
+
+        // Estimate value size
+        long valueSize = 0;
+        if (TryGetPrimitiveSize(valueType, out var valuePrimitiveSize))
+        {
+            valueSize = valuePrimitiveSize;
+        }
+        else
+        {
+            // For non-primitive values, estimate based on first value if available
+            if (obj is IEnumerable enumerable)
+            {
+                var enumerator = enumerable.GetEnumerator();
+                if (enumerator.MoveNext())
+                {
+                    // This is a KeyValuePair, we need to extract the value
+                    var kvpType = enumerator.Current.GetType();
+                    var valueProperty = kvpType.GetProperty("Value");
+                    if (valueProperty != null)
+                    {
+                        var firstValue = valueProperty.GetValue(enumerator.Current);
+                        valueSize = EstimateObjectSize(firstValue, visited);
+                    }
+                }
+            }
+        }
+
+        size += (long)count * (keySize + valueSize);
+        return size;
+    }
+
+    private static long EstimateNonGenericCollectionSize(ICollection collection, HashSet<object> visited)
+    {
+        long size = 24; // collection object overhead
+        
+        foreach (var item in collection)
+        {
+            size += EstimateObjectSize(item, visited);
+        }
+
+        return size;
+    }
+
+    private static long EstimateNonGenericDictionarySize(IDictionary dictionary, HashSet<object> visited)
+    {
+        long size = 24; // dictionary object overhead
+        
+        foreach (DictionaryEntry entry in dictionary)
+        {
+            size += EstimateObjectSize(entry.Key, visited);
+            size += EstimateObjectSize(entry.Value, visited);
+        }
+
+        return size;
     }
 
     private static bool TryGetPrimitiveSize(Type type, out int size)

@@ -283,4 +283,80 @@ public class EstimatorBehaviorTests
         Assert.DoesNotThrow(() => _estimator.EstimateSize(node));
         Assert.That(_estimator.EstimateSize(node), Is.GreaterThan(0));
     }
+
+    [Test]
+    public void Collections_Of_Objects_Are_Correctly_Estimated()
+    {
+        // Create test objects
+        var person1 = new Person
+        {
+            Id = 1,
+            Name = "Alice",
+            Scores = new[] { 10, 20 },
+            Address = new Address { Street = "123 Main St", City = "Anytown", ZipCode = 12345 }
+        };
+
+        var person2 = new Person
+        {
+            Id = 2,
+            Name = "Bob",
+            Scores = new[] { 30, 40, 50 },
+            Address = new Address { Street = "456 Oak Ave", City = "Somewhere", ZipCode = 67890 }
+        };
+
+        // Test List<Person>
+        var personList = new List<Person> { person1, person2 };
+        var listSize = _estimator.EstimateSize(personList);
+
+        // Calculate the expected size for List<Person>
+        // List overhead: 24 + individual person sizes
+        var person1Size = _estimator.EstimateSize(person1);
+        var person2Size = _estimator.EstimateSize(person2);
+        long expectedListSize = 24 + person1Size + person2Size; // List overhead + Person1 + Person2
+
+        Assert.That(listSize, Is.EqualTo(expectedListSize));
+
+        // Test HashSet<Person> with same objects
+        var personSet = new HashSet<Person> { person1, person2 };
+        var setSize = _estimator.EstimateSize(personSet);
+        Assert.That(setSize, Is.EqualTo(expectedListSize)); // Should be same as List since same objects
+
+        // Test Dictionary<string, Person>
+        var personDict = new Dictionary<string, Person>
+        {
+            ["alice"] = person1,
+            ["bob"] = person2
+        };
+        var dictSize = _estimator.EstimateSize(personDict);
+
+        // Calculate the expected size for Dictionary<string, Person>
+        // Dictionary overhead: 24
+        // Key "alice": 24 + 2*5 = 34
+        // Value person1: 206 bytes (from debug output)
+        // Key "bob": 24 + 2*3 = 30
+        // Value person2: 210 bytes (from debug output)
+        long expectedDictSize = 24; // Dictionary overhead
+        expectedDictSize += (24 + 2 * "alice".Length) + 206; // "alice" -> person1
+        expectedDictSize += (24 + 2 * "bob".Length) + 210; // "bob" -> person2
+
+        Assert.That(dictSize, Is.EqualTo(expectedDictSize));
+
+        // Test that collections with shared objects are correctly deduplicated
+        var sharedAddress = new Address { Street = "Shared St", City = "Shared City", ZipCode = 99999 };
+        var personWithShared1 = new Person { Id = 3, Name = "Charlie", Address = sharedAddress };
+        var personWithShared2 = new Person { Id = 4, Name = "Diana", Address = sharedAddress };
+        
+        var listWithShared = new List<Person> { personWithShared1, personWithShared2 };
+        var listWithSharedSize = _estimator.EstimateSize(listWithShared);
+
+        // Same objects but with distinct addresses
+        var personWithDistinct1 = new Person { Id = 3, Name = "Charlie", Address = new Address { Street = "Shared St", City = "Shared City", ZipCode = 99999 } };
+        var personWithDistinct2 = new Person { Id = 4, Name = "Diana", Address = new Address { Street = "Shared St", City = "Shared City", ZipCode = 99999 } };
+        
+        var listWithDistinct = new List<Person> { personWithDistinct1, personWithDistinct2 };
+        var listWithDistinctSize = _estimator.EstimateSize(listWithDistinct);
+
+        // List with shared address should be smaller due to deduplication
+        Assert.That(listWithSharedSize, Is.LessThan(listWithDistinctSize));
+    }
 } 
