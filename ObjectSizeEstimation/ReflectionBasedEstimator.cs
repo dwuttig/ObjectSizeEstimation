@@ -3,11 +3,11 @@ using System.Collections;
 using System.Collections.Generic;
 namespace ObjectSizeEstimation;
 
-public class Estimator
+public class ReflectionBasedEstimator : IObjectSizeEstimator
 {
     private readonly ILogger? _logger;
 
-    public Estimator(ILogger? logger = null)
+    public ReflectionBasedEstimator(ILogger? logger = null)
     {
         _logger = logger;
     }
